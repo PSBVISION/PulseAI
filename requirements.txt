@@ -1,0 +1,38 @@
+# Deep Learning Frameworks
+torch>=2.0.0
+torchvision>=0.15.0
+tensorflow>=2.12.0
+
+# Data Processing
+numpy>=1.24.0
+pandas>=2.0.0
+scikit-learn>=1.2.0
+
+# Visualization
+matplotlib>=3.7.0
+seaborn>=0.12.0
+plotly>=5.14.0
+
+# Model Utilities
+timm>=0.9.0
+albumentations>=1.3.0
+
+# Interpretability
+grad-cam>=1.4.0
+captum>=0.6.0
+
+# Progress & Logging
+tqdm>=4.65.0
+tensorboard>=2.12.0
+
+# Image Processing
+pillow>=9.5.0
+opencv-python>=4.7.0
+
+# Jupyter
+jupyter>=1.0.0
+ipywidgets>=8.0.0
+
+# Model Compression (Level 5)
+onnx>=1.14.0
+onnxruntime>=1.15.0
