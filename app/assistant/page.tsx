@@ -186,6 +186,7 @@ export default function AssistantPage() {
           {/* Webcam */}
           {showWebcam && (
             <WebcamCapture
+              onCapture={() => {}} // Just display webcam, no capture needed
               showCapture={false}
               isCapturing={false}
             />

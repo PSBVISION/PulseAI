@@ -83,7 +83,9 @@ Important:
       },
     ];
 
-    const response = await fetch(GEMINI_API_URL, {
+    const geminiUrl = `${GEMINI_API_URL}?key=${GEMINI_API_KEY}`;
+
+    const response = await fetch(geminiUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -121,10 +123,10 @@ Important:
     });
 
     if (!response.ok) {
-      const error = await response.json();
-      console.error("Gemini API error:", error);
+      const error = await response.text();
+      console.error("Gemini API error:", error, "Status:", response.status);
       return NextResponse.json(
-        { error: "Failed to generate response" },
+        { error: "Failed to generate response", details: error },
         { status: response.status }
       );
     }
@@ -153,7 +155,7 @@ Important:
   } catch (error) {
     console.error("Chat API error:", error);
     return NextResponse.json(
-      { error: "Internal server error" },
+      { error: "Internal server error", details: String(error) },
       { status: 500 }
     );
   }

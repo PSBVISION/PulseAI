@@ -60,7 +60,7 @@ export default function RecognizePage() {
 
     try {
       const result = await faceRecognitionManager.recognizeUser(
-        canvas as any,
+        canvas,
         users
       );
 

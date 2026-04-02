@@ -285,11 +285,98 @@ export default function RegisterPage() {
                 )}
 
                 {/* Step: Confirmation */}
-                {step === 'confirmation' && registeredUser && (
+                {step === 'confirmation' && (
                   <motion.div
                     initial={{ opacity: 0, scale: 0.95 }}
                     animate={{ opacity: 1, scale: 1 }}
-                    className="space-y-6 text-center"
+                    className="space-y-6"
+                  >
+                    <div className="text-center">
+                      <div className="flex justify-center mb-4">
+                        <div className="p-4 rounded-full bg-green-500/10">
+                          <CheckCircle className="w-12 h-12 text-green-400" />
+                        </div>
+                      </div>
+
+                      <h3 className="text-2xl font-bold mb-2">
+                        Face Captured Successfully!
+                      </h3>
+                      <p className="text-slate-400">
+                        Review your profile details and confirm to complete registration.
+                      </p>
+                    </div>
+
+                    <Card className="bg-slate-700/50 border-slate-600">
+                      <CardContent className="pt-6">
+                        <div className="space-y-4">
+                          <div className="flex justify-between">
+                            <span className="text-slate-400">Name:</span>
+                            <span className="font-medium">{name}</span>
+                          </div>
+                          {nickname && (
+                            <div className="flex justify-between">
+                              <span className="text-slate-400">Nickname:</span>
+                              <span className="font-medium">{nickname}</span>
+                            </div>
+                          )}
+                          <div className="flex justify-between">
+                            <span className="text-slate-400">Personality:</span>
+                            <span className="font-medium capitalize">
+                              {personality}
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-slate-400">
+                              Face Data:
+                            </span>
+                            <span className="font-medium text-green-400">
+                              ✓ Captured
+                            </span>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    {isLoading && (
+                      <div className="flex items-center justify-center gap-2 text-cyan-400">
+                        <Spinner size="sm" />
+                        Registering and redirecting...
+                      </div>
+                    )}
+
+                    <div className="flex gap-3">
+                      <Button
+                        variant="outline"
+                        onClick={() => setStep('webcam')}
+                        disabled={isLoading}
+                        className="flex-1"
+                      >
+                        Retake Photo
+                      </Button>
+                      <Button
+                        onClick={handleConfirmRegister}
+                        disabled={isLoading || !faceDescriptor}
+                        className="flex-1"
+                      >
+                        {isLoading ? (
+                          <span className="flex items-center gap-2">
+                            <Spinner size="sm" />
+                            Registering...
+                          </span>
+                        ) : (
+                          'Confirm & Register'
+                        )}
+                      </Button>
+                    </div>
+                  </motion.div>
+                )}
+
+                {/* Success State - After Registration */}
+                {registeredUser && (
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="space-y-4 text-center"
                   >
                     <div className="flex justify-center">
                       <div className="p-4 rounded-full bg-green-500/10">
@@ -302,47 +389,14 @@ export default function RegisterPage() {
                         Welcome, {registeredUser.name}!
                       </h3>
                       <p className="text-slate-400">
-                        Your profile has been registered successfully. Your desk bot is ready to assist!
+                        Your profile has been registered successfully.
                       </p>
                     </div>
 
-                    <Card className="bg-slate-700/50 border-slate-600">
-                      <CardContent className="pt-6">
-                        <div className="space-y-3 text-left">
-                          <div className="flex justify-between">
-                            <span className="text-slate-400">Name:</span>
-                            <span className="font-medium">
-                              {registeredUser.name}
-                            </span>
-                          </div>
-                          {registeredUser.nickname && (
-                            <div className="flex justify-between">
-                              <span className="text-slate-400">
-                                Nickname:
-                              </span>
-                              <span className="font-medium">
-                                {registeredUser.nickname}
-                              </span>
-                            </div>
-                          )}
-                          <div className="flex justify-between">
-                            <span className="text-slate-400">
-                              Personality:
-                            </span>
-                            <span className="font-medium capitalize">
-                              {registeredUser.personality}
-                            </span>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-
-                    {isLoading && (
-                      <div className="flex items-center justify-center gap-2 text-cyan-400">
-                        <Spinner size="sm" />
-                        Redirecting to chat...
-                      </div>
-                    )}
+                    <div className="flex items-center justify-center gap-2 text-cyan-400">
+                      <Spinner size="sm" />
+                      <span>Redirecting to chat...</span>
+                    </div>
                   </motion.div>
                 )}
               </div>
