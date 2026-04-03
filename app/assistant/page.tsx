@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { Send, Trash2, LogOut } from 'lucide-react';
+import { Send, Trash2, LogOut, Mic, MicOff } from 'lucide-react';
 import { NavHeader } from '@/components/nav-header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,6 +13,7 @@ import { RobotAvatar } from '@/components/robot-avatar';
 import { WebcamCapture } from '@/components/webcam-capture';
 import Spinner from '@/components/ui/spinner';
 import { storageManager } from '@/lib/storage';
+import { useSpeechToText } from '@/lib/use-speech-to-text';
 import { UserProfile, ChatMessage as ChatMessageType, ChatSession } from '@/lib/types';
 
 export default function AssistantPage() {
@@ -26,6 +27,18 @@ export default function AssistantPage() {
   const [isInitializing, setIsInitializing] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showWebcam, setShowWebcam] = useState(false);
+  
+  // Speech-to-text
+  const {
+    isListening,
+    isSupported: isSpeechSupported,
+    transcript,
+    interimTranscript,
+    error: speechError,
+    startListening,
+    stopListening,
+    resetTranscript,
+  } = useSpeechToText({ language: 'en-US', continuous: false });
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -34,6 +47,14 @@ export default function AssistantPage() {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  // Update input when speech transcript is captured
+  useEffect(() => {
+    if (transcript) {
+      setInput((prev) => (prev + ' ' + transcript).trim());
+      resetTranscript();
+    }
+  }, [transcript, resetTranscript]);
 
   useEffect(() => {
     const initializePage = () => {
@@ -296,15 +317,59 @@ export default function AssistantPage() {
             </div>
 
             {/* Input Area */}
-            <div className="border-t border-slate-700 p-4">
-              <form onSubmit={handleSendMessage} className="flex gap-3">
+            <div className="border-t border-slate-700 p-4 space-y-2">
+              {/* Speech/Interim Transcript Display */}
+              {(isListening || interimTranscript) && (
+                <div className="text-sm text-slate-400 italic">
+                  🎤 Listening... {interimTranscript && `"${interimTranscript}"`}
+                </div>
+              )}
+              
+              {speechError && (
+                <div className="text-sm text-red-400">
+                  ⚠️ {speechError}
+                </div>
+              )}
+
+              <form onSubmit={handleSendMessage} className="flex gap-2">
                 <Input
-                  placeholder="Ask your desk bot anything..."
+                  placeholder="Ask your desk bot anything... or use the microphone"
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   disabled={isLoading}
                   className="bg-slate-700 border-slate-600"
                 />
+                
+                {isSpeechSupported && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={isListening ? 'default' : 'outline'}
+                    onClick={isListening ? stopListening : startListening}
+                    disabled={isLoading}
+                    className={`gap-2 ${
+                      isListening ? 'bg-red-600 hover:bg-red-700' : ''
+                    }`}
+                    title={
+                      isListening
+                        ? 'Stop listening'
+                        : 'Click to start voice input'
+                    }
+                  >
+                    {isListening ? (
+                      <>
+                        <MicOff className="w-4 h-4" />
+                        <span className="hidden sm:inline">Stop</span>
+                      </>
+                    ) : (
+                      <>
+                        <Mic className="w-4 h-4" />
+                        <span className="hidden sm:inline">Voice</span>
+                      </>
+                    )}
+                  </Button>
+                )}
+
                 <Button
                   type="submit"
                   disabled={isLoading || !input.trim()}
