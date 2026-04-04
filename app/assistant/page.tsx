@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { Send, Trash2, LogOut, Mic, MicOff } from 'lucide-react';
+import { Send, Trash2, LogOut, Mic, MicOff, Volume2, Pause, Play } from 'lucide-react';
 import { NavHeader } from '@/components/nav-header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,6 +14,7 @@ import { WebcamCapture } from '@/components/webcam-capture';
 import Spinner from '@/components/ui/spinner';
 import { storageManager } from '@/lib/storage';
 import { useSpeechToText } from '@/lib/use-speech-to-text';
+import { useTextToSpeech } from '@/lib/use-text-to-speech';
 import { UserProfile, ChatMessage as ChatMessageType, ChatSession } from '@/lib/types';
 
 export default function AssistantPage() {
@@ -27,6 +28,7 @@ export default function AssistantPage() {
   const [isInitializing, setIsInitializing] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showWebcam, setShowWebcam] = useState(false);
+  const [speakingMessageId, setSpeakingMessageId] = useState<string | null>(null);
   
   // Speech-to-text
   const {
@@ -39,6 +41,17 @@ export default function AssistantPage() {
     stopListening,
     resetTranscript,
   } = useSpeechToText({ language: 'en-US', continuous: false });
+
+  // Text-to-speech
+  const {
+    isSupported: isTTSSupported,
+    isSpeaking,
+    isPaused,
+    speak,
+    pause,
+    resume,
+    stop,
+  } = useTextToSpeech();
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -171,7 +184,17 @@ export default function AssistantPage() {
 
   const handleLogout = () => {
     setMessages([]);
+    stop();
     router.push('/recognize');
+  };
+
+  const handleReadLastMessage = () => {
+    // Find the last assistant message
+    const lastAssistantMessage = [...messages].reverse().find((m) => m.role === 'assistant');
+    if (lastAssistantMessage) {
+      setSpeakingMessageId(lastAssistantMessage.id);
+      speak(lastAssistantMessage.content);
+    }
   };
 
   if (isInitializing) {
@@ -271,6 +294,64 @@ export default function AssistantPage() {
             </div>
           )}
 
+          {/* TTS Controls and Status */}
+          {isTTSSupported && messages.some((m) => m.role === 'assistant') && (
+            <div className="mb-4 p-3 bg-slate-800 border border-slate-700 rounded-lg flex items-center justify-between">
+              <div className="text-sm text-slate-400">
+                {isSpeaking ? (
+                  <span className="text-blue-400">🔊 Reading bot response...</span>
+                ) : (
+                  <span>Listen to bot responses with text-to-speech</span>
+                )}
+              </div>
+              <div className="flex gap-2">
+                {isSpeaking ? (
+                  <>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => (isPaused ? resume() : pause())}
+                      className="gap-1"
+                    >
+                      {isPaused ? (
+                        <>
+                          <Play className="w-3 h-3" />
+                          Resume
+                        </>
+                      ) : (
+                        <>
+                          <Pause className="w-3 h-3" />
+                          Pause
+                        </>
+                      )}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        stop();
+                        setSpeakingMessageId(null);
+                      }}
+                      className="text-red-400 hover:text-red-300"
+                    >
+                      Stop
+                    </Button>
+                  </>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleReadLastMessage}
+                    className="gap-1"
+                  >
+                    <Volume2 className="w-4 h-4" />
+                    Read Last Response
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Messages */}
           <Card className="flex-1 bg-slate-800 border-slate-700 flex flex-col overflow-hidden">
             <div className="flex-1 overflow-y-auto p-6 space-y-4">
@@ -285,12 +366,64 @@ export default function AssistantPage() {
               ) : (
                 <>
                   {messages.map((msg) => (
-                    <ChatMessage
-                      key={msg.id}
-                      role={msg.role}
-                      content={msg.content}
-                      timestamp={new Date(msg.timestamp)}
-                    />
+                    <div key={msg.id} className="relative">
+                      <ChatMessage
+                        role={msg.role}
+                        content={msg.content}
+                        timestamp={new Date(msg.timestamp)}
+                      />
+                      {/* TTS Control for Assistant Messages */}
+                      {msg.role === 'assistant' && isTTSSupported && (
+                        <div className="flex gap-2 mt-2 ml-1">
+                          {speakingMessageId === msg.id && isSpeaking ? (
+                            <>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => (isPaused ? resume() : pause())}
+                                className="h-6 px-2 text-xs gap-1 text-blue-400 hover:text-blue-300"
+                              >
+                                {isPaused ? (
+                                  <>
+                                    <Play className="w-3 h-3" />
+                                    Resume
+                                  </>
+                                ) : (
+                                  <>
+                                    <Pause className="w-3 h-3" />
+                                    Pause
+                                  </>
+                                )}
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => {
+                                  stop();
+                                  setSpeakingMessageId(null);
+                                }}
+                                className="h-6 px-2 text-xs text-red-400 hover:text-red-300"
+                              >
+                                Stop
+                              </Button>
+                            </>
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => {
+                                setSpeakingMessageId(msg.id);
+                                speak(msg.content);
+                              }}
+                              className="h-6 px-2 text-xs gap-1 text-slate-400 hover:text-cyan-400"
+                            >
+                              <Volume2 className="w-3 h-3" />
+                              <span className="hidden sm:inline">Read</span>
+                            </Button>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   ))}
                   {isLoading && (
                     <div className="flex gap-3">
