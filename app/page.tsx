@@ -1,233 +1,282 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { 
-  Robot, 
-  Camera, 
-  Brain, 
-  Zap, 
-  Shield, 
-  ArrowRight,
-  Smile,
-  MessageSquare,
-  Lightbulb
-} from 'lucide-react';
+import { Mic, LogOut } from 'lucide-react';
 import { NavHeader } from '@/components/nav-header';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { RobotAvatar } from '@/components/robot-avatar';
+import { Card, CardContent } from '@/components/ui/card';
+import { WebcamCapture } from '@/components/webcam-capture';
+import Spinner from '@/components/ui/spinner';
+import { faceRecognitionManager } from '@/lib/face-recognition';
+import { storageManager } from '@/lib/storage';
+import { useSpeechToText } from '@/lib/use-speech-to-text';
+import { useTextToSpeech } from '@/lib/use-text-to-speech';
+import { UserProfile } from '@/lib/types';
 
 export default function HomePage() {
   const router = useRouter();
+  const [step, setStep] = useState<'detect' | 'chat'>('detect');
+  const [recognizedUser, setRecognizedUser] = useState<UserProfile | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
-  const features = [
-    {
-      icon: Camera,
-      title: 'Smart Face Recognition',
-      description: 'Register and be recognized by your personal desk bot through webcam',
-    },
-    {
-      icon: Brain,
-      title: 'AI-Powered Responses',
-      description: 'Intelligent answers powered by Google Gemini API',
-    },
-    {
-      icon: Smile,
-      title: 'Personalized Interaction',
-      description: 'Choose your assistant personality: friendly, formal, energetic, or calm',
-    },
-    {
-      icon: MessageSquare,
-      title: 'Natural Conversation',
-      description: 'Chat with your desk bot like talking to a helpful colleague',
-    },
-    {
-      icon: Lightbulb,
-      title: 'Knowledge Assistant',
-      description: 'Get help with questions, ideas, and information',
-    },
-    {
-      icon: Zap,
-      title: 'Real-time Interaction',
-      description: 'Fast, responsive conversations tailored to your preferences',
-    },
-  ];
+  // Speech-to-text for questions
+  const {
+    isListening,
+    isSupported: isSpeechSupported,
+    transcript,
+    interimTranscript,
+    error: speechError,
+    startListening,
+    stopListening,
+    resetTranscript,
+  } = useSpeechToText({ language: 'en-US', continuous: false });
 
-  const containerVariants = {
-    hidden: { opacity: 0 },
-    visible: {
-      opacity: 1,
-      transition: {
-        staggerChildren: 0.1,
-        delayChildren: 0.2,
-      },
-    },
+  // Text-to-speech for answers
+  const {
+    isSupported: isTTSSupported,
+    isSpeaking,
+    speak,
+    stop: stopSpeech,
+  } = useTextToSpeech();
+
+  const [chatMessage, setChatMessage] = useState('');
+  const [response, setResponse] = useState<string | null>(null);
+
+  // Handle face capture
+  const handleFaceCapture = async (canvas: HTMLCanvasElement) => {
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      // Get all registered users
+      const allUsers = storageManager.getAllUsers();
+
+      if (allUsers.length === 0) {
+        setError('No registered users. Please register first.');
+        setIsLoading(false);
+        return;
+      }
+
+      // Extract face descriptor
+      const descriptor = await faceRecognitionManager.detectAndExtractDescriptor(canvas);
+      if (!descriptor) {
+        setError('No face detected. Please position your face clearly.');
+        setIsLoading(false);
+        return;
+      }
+
+      // Recognize user
+      const result = await faceRecognitionManager.recognizeUser(canvas, allUsers);
+
+      if (result.recognized && result.user) {
+        setRecognizedUser(result.user);
+        setStep('chat');
+        // Welcome with voice
+        const welcomeMsg = `Hello ${result.user.nickname || result.user.name}! I'm your desk bot. Ask me anything!`;
+        speak(welcomeMsg);
+      } else {
+        setError('Face not recognized. Please try again or register first.');
+      }
+    } catch (err) {
+      setError('Face detection failed. Please try again.');
+      console.error(err);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const itemVariants = {
-    hidden: { opacity: 0, y: 20 },
-    visible: {
-      opacity: 1,
-      y: 0,
-      transition: { duration: 0.6 },
-    },
+  // Handle voice question
+  useEffect(() => {
+    if (transcript && recognizedUser) {
+      handleQuestion(transcript);
+      resetTranscript();
+    }
+  }, [transcript, recognizedUser]);
+
+  const handleQuestion = async (question: string) => {
+    if (!question.trim() || !recognizedUser) return;
+
+    setChatMessage(question);
+    setIsLoading(true);
+
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: question,
+          userName: recognizedUser.name,
+          userNickname: recognizedUser.nickname,
+          personality: recognizedUser.personality,
+        }),
+      });
+
+      if (!res.ok) throw new Error('Failed to get response');
+
+      const data = await res.json();
+      const answer = data.message || 'Sorry, I could not generate a response.';
+      setResponse(answer);
+
+      // Speak the response
+      speak(answer, { rate: 0.95 });
+    } catch (err) {
+      const errorMsg = 'Sorry, something went wrong. Please try again.';
+      setResponse(errorMsg);
+      speak(errorMsg);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleLogout = () => {
+    setRecognizedUser(null);
+    setStep('detect');
+    setChatMessage('');
+    setResponse(null);
+    stopSpeech();
   };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
       <NavHeader />
 
-      {/* Hero Section */}
-      <motion.section
-        className="max-w-7xl mx-auto px-4 py-20"
-        initial="hidden"
-        animate="visible"
-        variants={containerVariants}
-      >
-        <div className="grid md:grid-cols-2 gap-12 items-center">
-          <motion.div variants={itemVariants} className="space-y-6">
-            <div>
-              <h1 className="text-5xl md:text-6xl font-bold mb-4">
-                <span className="bg-gradient-to-r from-cyan-400 via-blue-400 to-purple-400 bg-clip-text text-transparent">
-                  Your Personal
-                </span>
-                <br />
-                <span className="bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent">
-                  Desk Bot Assistant
-                </span>
-              </h1>
-              <p className="text-xl text-slate-300 leading-relaxed">
-                An intelligent AI companion that recognizes you, understands your personality, and provides personalized assistance. The future of desk productivity starts here.
-              </p>
-            </div>
-
-            <div className="flex flex-col sm:flex-row gap-4">
-              <Button
-                onClick={() => router.push('/register')}
-                size="lg"
-                className="gap-2 bg-cyan-600 hover:bg-cyan-700"
-              >
-                Get Started <ArrowRight className="w-4 h-4" />
-              </Button>
-              <Button
-                onClick={() => router.push('/recognize')}
-                variant="outline"
-                size="lg"
-                className="gap-2"
-              >
-                Sign In
-              </Button>
-            </div>
-
-            <div className="flex items-center gap-2 text-sm text-slate-400 pt-4">
-              <Shield className="w-4 h-4" />
-              <p>Private • Browser-based • No data stored externally</p>
-            </div>
-          </motion.div>
-
+      <div className="max-w-2xl mx-auto px-4 py-12">
+        {step === 'detect' ? (
+          // Face Detection Screen
           <motion.div
-            variants={itemVariants}
-            className="flex justify-center items-center"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="space-y-6"
           >
-            <div className="relative">
-              <div className="absolute inset-0 bg-gradient-to-r from-cyan-500 to-blue-500 rounded-3xl blur-3xl opacity-20 animate-pulse" />
-              <div className="relative bg-slate-800 rounded-3xl p-12 border border-slate-700">
-                <RobotAvatar isActive isListening={false} />
-              </div>
-            </div>
+            <Card className="bg-slate-800 border-slate-700 text-center">
+              <CardContent className="pt-8 pb-6">
+                <h1 className="text-3xl font-bold mb-2">Face Detector Bot</h1>
+                <p className="text-slate-400 mb-6">
+                  Let me recognize your face, then ask me anything!
+                </p>
+
+                {error && (
+                  <div className="mb-6 p-4 bg-red-900/20 border border-red-500/50 rounded-lg">
+                    <p className="text-red-300 text-sm">{error}</p>
+                  </div>
+                )}
+
+                <div className="mb-6">
+                  <WebcamCapture
+                    onCapture={handleFaceCapture}
+                    isCapturing={isLoading}
+                    showCapture={true}
+                  />
+                </div>
+
+                <p className="text-slate-500 text-sm">
+                  First time? Go to{' '}
+                  <Button
+                    variant="link"
+                    onClick={() => router.push('/register')}
+                    className="text-cyan-400 p-0 h-auto"
+                  >
+                    Register
+                  </Button>
+                  {' '}to add your face
+                </p>
+              </CardContent>
+            </Card>
           </motion.div>
-        </div>
-      </motion.section>
+        ) : (
+          // Voice Chat Screen
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="space-y-6"
+          >
+            <Card className="bg-slate-800 border-slate-700">
+              <CardContent className="pt-6 pb-6">
+                <div className="text-center mb-6">
+                  <h2 className="text-2xl font-bold mb-1">
+                    Hello, {recognizedUser?.nickname || recognizedUser?.name}! 👋
+                  </h2>
+                  <p className="text-slate-400">Ask me anything using your voice</p>
+                </div>
 
-      {/* Features Section */}
-      <section className="max-w-7xl mx-auto px-4 py-20">
-        <motion.div
-          className="text-center mb-12"
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
-          viewport={{ once: true }}
-        >
-          <h2 className="text-4xl font-bold mb-4">
-            <span className="bg-gradient-to-r from-cyan-400 to-blue-400 bg-clip-text text-transparent">
-              Powerful Features
-            </span>
-          </h2>
-          <p className="text-lg text-slate-400">
-            Everything you need for a personalized AI assistant experience
-          </p>
-        </motion.div>
-
-        <motion.div
-          className="grid md:grid-cols-2 lg:grid-cols-3 gap-6"
-          initial="hidden"
-          whileInView="visible"
-          variants={containerVariants}
-          viewport={{ once: true }}
-        >
-          {features.map((feature, idx) => {
-            const Icon = feature.icon;
-            return (
-              <motion.div key={idx} variants={itemVariants}>
-                <Card className="h-full bg-slate-800/50 border-slate-700 hover:border-cyan-500/50 transition-colors">
-                  <CardHeader>
-                    <div className="p-2 w-fit rounded-lg bg-cyan-500/10 mb-2">
-                      <Icon className="w-6 h-6 text-cyan-400" />
+                {/* Response Display */}
+                {response && (
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="mb-6 p-4 bg-slate-700/50 border border-slate-600 rounded-lg"
+                  >
+                    <div className="space-y-2">
+                      <p className="text-sm text-slate-400">
+                        <strong>You:</strong> {chatMessage}
+                      </p>
+                      <p className="text-slate-200">
+                        <strong>🤖 Bot:</strong> {response}
+                      </p>
+                      {isTTSSupported && isSpeaking && (
+                        <p className="text-sm text-blue-400 flex items-center gap-2">
+                          <span className="animate-pulse">🔊</span>
+                          Speaking...
+                        </p>
+                      )}
                     </div>
-                    <CardTitle className="text-lg">{feature.title}</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <CardDescription className="text-slate-400">
-                      {feature.description}
-                    </CardDescription>
-                  </CardContent>
-                </Card>
-              </motion.div>
-            );
-          })}
-        </motion.div>
-      </section>
+                  </motion.div>
+                )}
 
-      {/* CTA Section */}
-      <motion.section
-        className="max-w-4xl mx-auto px-4 py-20 text-center"
-        initial={{ opacity: 0, y: 20 }}
-        whileInView={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6 }}
-        viewport={{ once: true }}
-      >
-        <Card className="bg-gradient-to-r from-slate-800 to-slate-900 border-cyan-500/30">
-          <CardContent className="pt-8 pb-8">
-            <h3 className="text-2xl font-bold mb-4">
-              Ready to meet your desk bot?
-            </h3>
-            <p className="text-slate-300 mb-6">
-              Create a profile in seconds and experience personalized AI assistance like never before.
-            </p>
-            <Button
-              onClick={() => router.push('/register')}
-              size="lg"
-              className="bg-cyan-600 hover:bg-cyan-700 gap-2"
-            >
-              Start Now <ArrowRight className="w-4 h-4" />
-            </Button>
-          </CardContent>
-        </Card>
-      </motion.section>
+                {/* Voice Input Controls */}
+                <div className="space-y-4">
+                  {speechError && (
+                    <div className="p-3 bg-red-900/20 border border-red-500/50 rounded text-red-300 text-sm">
+                      ⚠️ {speechError}
+                    </div>
+                  )}
 
-      {/* Footer */}
-      <footer className="max-w-7xl mx-auto px-4 py-8 border-t border-slate-800">
-        <div className="flex flex-col md:flex-row items-center justify-between text-sm text-slate-400">
-          <p>© 2025 Desk Bot Assistant. A prototype for personalized AI companions.</p>
-          <div className="flex gap-4 mt-4 md:mt-0">
-            <a href="#" className="hover:text-cyan-400 transition-colors">Privacy</a>
-            <a href="#" className="hover:text-cyan-400 transition-colors">Terms</a>
-            <a href="#" className="hover:text-cyan-400 transition-colors">Contact</a>
-          </div>
-        </div>
-      </footer>
+                  {(isListening || interimTranscript) && (
+                    <div className="text-center py-4">
+                      <div className="text-sm text-slate-400 mb-2">
+                        🎤 Listening...
+                      </div>
+                      {interimTranscript && (
+                        <p className="text-slate-200 italic">"{interimTranscript}"</p>
+                      )}
+                    </div>
+                  )}
+
+                  {isSpeechSupported ? (
+                    <Button
+                      onClick={isListening ? stopListening : startListening}
+                      disabled={isLoading}
+                      size="lg"
+                      className={`w-full gap-2 ${
+                        isListening ? 'bg-red-600 hover:bg-red-700' : 'bg-cyan-600 hover:bg-cyan-700'
+                      }`}
+                    >
+                      <Mic className="w-5 h-5" />
+                      {isListening ? 'Stop Listening' : 'Ask a Question'}
+                    </Button>
+                  ) : (
+                    <p className="text-center text-slate-400 text-sm">
+                      Speech input not supported in your browser
+                    </p>
+                  )}
+
+                  <Button
+                    onClick={handleLogout}
+                    variant="outline"
+                    className="w-full gap-2"
+                  >
+                    <LogOut className="w-4 h-4" />
+                    Logout & Detect New Face
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
+      </div>
     </div>
   );
 }
