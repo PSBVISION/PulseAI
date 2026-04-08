@@ -101,6 +101,7 @@ export default function HomePage() {
 
     setChatMessage(question);
     setIsLoading(true);
+    setError(null);
 
     try {
       const res = await fetch('/api/chat', {
@@ -114,7 +115,11 @@ export default function HomePage() {
         }),
       });
 
-      if (!res.ok) throw new Error('Failed to get response');
+      if (!res.ok) {
+        const errorText = await res.text();
+        console.error('API Error:', res.status, errorText);
+        throw new Error(`Failed to get response: ${res.status}`);
+      }
 
       const data = await res.json();
       const answer = data.message || 'Sorry, I could not generate a response.';
@@ -123,9 +128,11 @@ export default function HomePage() {
       // Speak the response
       speak(answer, { rate: 0.95 });
     } catch (err) {
-      const errorMsg = 'Sorry, something went wrong. Please try again.';
+      const errorMsg = `Error: ${err instanceof Error ? err.message : 'Something went wrong'}. Check browser console for details.`;
+      console.error('Question error:', err);
       setResponse(errorMsg);
-      speak(errorMsg);
+      setError(errorMsg);
+      speak('Sorry, something went wrong. Please try again.');
     } finally {
       setIsLoading(false);
     }

@@ -143,7 +143,9 @@ export default function AssistantPage() {
       });
 
       if (!response.ok) {
-        throw new Error('Failed to get response');
+        const errorText = await response.text();
+        console.error('API Error:', response.status, errorText);
+        throw new Error(`Failed to get response: ${response.status} - ${errorText}`);
       }
 
       const data = await response.json();

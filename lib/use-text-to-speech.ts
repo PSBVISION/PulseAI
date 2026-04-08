@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 
 interface UseTextToSpeechOptions {
   rate?: number;
@@ -34,13 +34,29 @@ export function useTextToSpeech(): UseTextToSpeechResult {
   const loadVoices = useCallback(() => {
     if (!synth) return;
     const voices = synth.getVoices();
-    setAvailableVoices(voices);
+    if (voices.length > 0) {
+      setAvailableVoices(voices);
+    }
   }, [synth]);
 
-  if (synth && typeof window !== 'undefined') {
-    // Load voices when they become available
-    synth.onvoiceschanged = loadVoices;
-  }
+  // Set up voice loading on component mount
+  useEffect(() => {
+    if (!synth) return;
+
+    // Load voices immediately
+    loadVoices();
+
+    // Also listen for when voices become available
+    const handleVoicesChanged = () => {
+      loadVoices();
+    };
+
+    synth.onvoiceschanged = handleVoicesChanged;
+
+    return () => {
+      synth.onvoiceschanged = null;
+    };
+  }, [synth, loadVoices]);
 
   const speak = useCallback(
     (text: string, options: UseTextToSpeechOptions = {}) => {
