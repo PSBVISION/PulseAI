@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const GEMINI_API_URL =
-  "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
+  "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent";
 
 interface ChatRequest {
   message: string;
@@ -91,10 +91,13 @@ Important:
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        contents: messages,
-        systemInstruction: {
-          parts: [{ text: systemPrompt }],
-        },
+        contents: [
+          {
+            role: "user",
+            parts: [{ text: systemPrompt }],
+          },
+          ...messages,
+        ],
         generationConfig: {
           temperature: 0.7,
           maxOutputTokens: 500,
