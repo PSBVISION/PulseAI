@@ -194,8 +194,21 @@ export default function AssistantPage() {
     // Find the last assistant message
     const lastAssistantMessage = [...messages].reverse().find((m) => m.role === 'assistant');
     if (lastAssistantMessage) {
+      if (!isTTSSupported) {
+        setError('Text-to-speech is not supported in your browser');
+        return;
+      }
+      if (!lastAssistantMessage.content) {
+        setError('No message content to read');
+        return;
+      }
       setSpeakingMessageId(lastAssistantMessage.id);
-      speak(lastAssistantMessage.content);
+      try {
+        speak(lastAssistantMessage.content);
+      } catch (err) {
+        console.error('Failed to speak:', err);
+        setError('Failed to read message. Please try again.');
+      }
     }
   };
 
@@ -415,7 +428,12 @@ export default function AssistantPage() {
                               variant="ghost"
                               onClick={() => {
                                 setSpeakingMessageId(msg.id);
-                                speak(msg.content);
+                                try {
+                                  speak(msg.content);
+                                } catch (err) {
+                                  console.error('Failed to speak:', err);
+                                  setError('Failed to read message. Please try again.');
+                                }
                               }}
                               className="h-6 px-2 text-xs gap-1 text-slate-400 hover:text-cyan-400"
                             >

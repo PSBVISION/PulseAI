@@ -36,7 +36,10 @@ export function useTextToSpeech(): UseTextToSpeechResult {
     const voices = synth.getVoices();
     if (voices.length > 0) {
       setAvailableVoices(voices);
+      return;
     }
+    // If no voices are available, they might be loading
+    // This should trigger the onvoiceschanged event
   }, [synth]);
 
   // Set up voice loading on component mount
@@ -54,13 +57,23 @@ export function useTextToSpeech(): UseTextToSpeechResult {
     synth.onvoiceschanged = handleVoicesChanged;
 
     return () => {
-      synth.onvoiceschanged = null;
+      if (synth) {
+        synth.onvoiceschanged = null;
+      }
     };
   }, [synth, loadVoices]);
 
   const speak = useCallback(
     (text: string, options: UseTextToSpeechOptions = {}) => {
-      if (!synth) return;
+      if (!synth) {
+        console.warn('Speech synthesis not supported');
+        return;
+      }
+
+      if (!text || typeof text !== 'string') {
+        console.warn('Invalid text provided to speak');
+        return;
+      }
 
       const {
         rate = 1,
@@ -75,24 +88,28 @@ export function useTextToSpeech(): UseTextToSpeechResult {
         synth.cancel();
       }
 
-      // Load voices if not already loaded
-      if (availableVoices.length === 0) {
-        loadVoices();
+      // Ensure voices are loaded
+      let voicesToUse = availableVoices;
+      if (voicesToUse.length === 0) {
+        // Try to get voices one more time
+        voicesToUse = synth.getVoices();
       }
 
       const utterance = new SpeechSynthesisUtterance(text);
-      utterance.rate = rate;
-      utterance.pitch = pitch;
-      utterance.volume = volume;
+      
+      // Validate and set speech parameters
+      utterance.rate = Math.max(0.1, Math.min(2, rate));
+      utterance.pitch = Math.max(0, Math.min(2, pitch));
+      utterance.volume = Math.max(0, Math.min(1, volume));
       utterance.lang = language;
 
       // Set voice if available
-      if (availableVoices.length > 0) {
+      if (voicesToUse.length > 0) {
         const voiceIdx = Math.min(
           voiceIndex,
-          availableVoices.length - 1
+          voicesToUse.length - 1
         );
-        utterance.voice = availableVoices[voiceIdx];
+        utterance.voice = voicesToUse[voiceIdx];
         voiceIndexRef.current = voiceIdx;
       }
 
@@ -108,12 +125,28 @@ export function useTextToSpeech(): UseTextToSpeechResult {
 
       utterance.onerror = (event) => {
         console.error('Speech synthesis error:', event.error);
+        console.error('Error details:', {
+          error: event.error,
+          utterance: {
+            text: utterance.text,
+            rate: utterance.rate,
+            pitch: utterance.pitch,
+            volume: utterance.volume,
+            lang: utterance.lang,
+          },
+        });
         setIsSpeaking(false);
         setIsPaused(false);
       };
 
       utteranceRef.current = utterance;
-      synth.speak(utterance);
+      try {
+        synth.speak(utterance);
+      } catch (error) {
+        console.error('Failed to call synth.speak:', error);
+        setIsSpeaking(false);
+        setIsPaused(false);
+      }
     },
     [synth, availableVoices, loadVoices]
   );
