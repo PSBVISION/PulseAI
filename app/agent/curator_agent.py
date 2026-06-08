@@ -49,7 +49,7 @@ class CuratorAgent:
             self.client = genai.Client(api_key=api_key) if api_key else genai.Client()
         except ValueError:
             self.client = None
-        self.model = "gemini-2.5-flash"
+        self.model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
         self.user_profile = user_profile
         self.system_prompt = self._build_system_prompt()
 
@@ -90,19 +90,32 @@ Provide a relevance score (0.0-10.0) and rank (1-{len(digests)}) for each articl
             print("Error ranking digests: Google GenAI client is not initialized. Please set GEMINI_API_KEY in your environment.")
             return []
 
-        try:
-            response = self.client.models.generate_content(
-                model=self.model,
-                contents=user_prompt,
-                config=types.GenerateContentConfig(
-                    system_instruction=self.system_prompt,
-                    temperature=0.3,
-                    response_mime_type="application/json",
-                    response_schema=RankedDigestList,
+        import time
+        for attempt in range(3):
+            try:
+                response = self.client.models.generate_content(
+                    model=self.model,
+                    contents=user_prompt,
+                    config=types.GenerateContentConfig(
+                        system_instruction=self.system_prompt,
+                        temperature=0.3,
+                        response_mime_type="application/json",
+                        response_schema=RankedDigestList,
+                    )
                 )
-            )
-            ranked_list = response.parsed
-            return ranked_list.articles if ranked_list else []
-        except Exception as e:
-            print(f"Error ranking digests: {e}")
-            return []
+                ranked_list = response.parsed
+                return ranked_list.articles if ranked_list else []
+            except Exception as e:
+                err_str = str(e)
+                if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
+                    wait_time = 45 if attempt == 0 else 60
+                    print(f"Rate limit hit. Retrying in {wait_time}s... (Attempt {attempt + 1}/3)")
+                    time.sleep(wait_time)
+                elif "503" in err_str or "UNAVAILABLE" in err_str:
+                    wait_time = 10
+                    print(f"Service unavailable (503). Retrying in {wait_time}s... (Attempt {attempt + 1}/3)")
+                    time.sleep(wait_time)
+                else:
+                    print(f"Error ranking digests: {e}")
+                    return []
+        return []

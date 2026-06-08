@@ -1,6 +1,7 @@
 from typing import Optional
 import logging
 import sys
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
@@ -34,6 +35,11 @@ def process_digests(limit: Optional[int] = None) -> dict:
         
         logger.info(f"[{idx}/{total}] Processing {article_type}: {article_title} (ID: {article_id})")
         
+        # Sleep 12 seconds between requests to respect the 5 RPM rate limit on Gemini free tier
+        if idx > 1:
+            logger.info("Pausing for 12 seconds to respect Gemini API rate limits...")
+            time.sleep(12)
+            
         try:
             digest_result = agent.generate_digest(
                 title=article["title"],

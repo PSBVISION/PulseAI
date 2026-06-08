@@ -18,7 +18,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def run_daily_pipeline(hours: int = 24, top_n: int = 10) -> dict:
+def run_daily_pipeline(hours: int = 168, top_n: int = 10) -> dict:
     start_time = datetime.now()
     logger.info("=" * 60)
     logger.info("Starting Daily AI News Aggregator Pipeline")
@@ -67,15 +67,18 @@ def run_daily_pipeline(hours: int = 24, top_n: int = 10) -> dict:
         logger.info(f"✓ Created {digest_result['processed']} digests "
                     f"({digest_result['failed']} failed out of {digest_result['total']} total)")
         
-        logger.info("\n[5/5] Generating and sending email digest...")
+        logger.info("\n[5/5] Generating daily newsletter digest...")
         email_result = send_digest_email(hours=hours, top_n=top_n)
         results["email"] = email_result
         
         if email_result["success"]:
-            logger.info(f"✓ Email sent successfully with {email_result['articles_count']} articles")
+            if email_result.get("email_sent", False):
+                logger.info(f"✓ Email sent successfully with {email_result['articles_count']} articles")
+            else:
+                logger.info(f"✓ Digest curated successfully on console with {email_result['articles_count']} articles")
             results["success"] = True
         else:
-            logger.error(f"✗ Failed to send email: {email_result.get('error', 'Unknown error')}")
+            logger.error(f"✗ Failed to curate digest: {email_result.get('error', 'Unknown error')}")
         
     except Exception as e:
         logger.error(f"Pipeline failed with error: {e}", exc_info=True)
