@@ -1,6 +1,7 @@
 import os
 from typing import List
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 
@@ -42,8 +43,13 @@ Rank articles from most relevant (rank 1) to least relevant. Ensure each article
 class CuratorAgent:
     def __init__(self, user_profile: dict):
         api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or os.getenv("OPENAI_API_KEY")
-        genai.configure(api_key=api_key)
-        self.model = "gemini-1.5-flash"
+        if api_key == "":
+            api_key = None
+        try:
+            self.client = genai.Client(api_key=api_key) if api_key else genai.Client()
+        except ValueError:
+            self.client = None
+        self.model = "gemini-2.5-flash"
         self.user_profile = user_profile
         self.system_prompt = self._build_system_prompt()
 
@@ -80,20 +86,22 @@ Preferences:
 
 Provide a relevance score (0.0-10.0) and rank (1-{len(digests)}) for each article, ordered from most to least relevant."""
 
+        if not self.client:
+            print("Error ranking digests: Google GenAI client is not initialized. Please set GEMINI_API_KEY in your environment.")
+            return []
+
         try:
-            model = genai.GenerativeModel(
-                model_name=self.model,
-                system_instruction=self.system_prompt
-            )
-            response = model.generate_content(
-                user_prompt,
-                generation_config=genai.GenerationConfig(
+            response = self.client.models.generate_content(
+                model=self.model,
+                contents=user_prompt,
+                config=types.GenerateContentConfig(
+                    system_instruction=self.system_prompt,
+                    temperature=0.3,
                     response_mime_type="application/json",
                     response_schema=RankedDigestList,
-                    temperature=0.3,
                 )
             )
-            ranked_list = RankedDigestList.model_validate_json(response.text)
+            ranked_list = response.parsed
             return ranked_list.articles if ranked_list else []
         except Exception as e:
             print(f"Error ranking digests: {e}")

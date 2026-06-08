@@ -1,6 +1,7 @@
 import os
 from typing import Optional
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
@@ -27,28 +28,35 @@ Guidelines:
 class DigestAgent:
     def __init__(self):
         api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or os.getenv("OPENAI_API_KEY")
-        genai.configure(api_key=api_key)
-        self.model = "gemini-1.5-flash"
+        if api_key == "":
+            api_key = None
+        try:
+            self.client = genai.Client(api_key=api_key) if api_key else genai.Client()
+        except ValueError:
+            self.client = None
+        self.model = "gemini-2.5-flash"
         self.system_prompt = PROMPT
 
     def generate_digest(self, title: str, content: str, article_type: str) -> Optional[DigestOutput]:
+        if not self.client:
+            print("Error generating digest: Google GenAI client is not initialized. Please set GEMINI_API_KEY in your environment.")
+            return None
+
         try:
             user_prompt = f"Create a digest for this {article_type}: \n Title: {title} \n Content: {content[:8000]}"
 
-            model = genai.GenerativeModel(
-                model_name=self.model,
-                system_instruction=self.system_prompt
-            )
-            response = model.generate_content(
-                user_prompt,
-                generation_config=genai.GenerationConfig(
+            response = self.client.models.generate_content(
+                model=self.model,
+                contents=user_prompt,
+                config=types.GenerateContentConfig(
+                    system_instruction=self.system_prompt,
+                    temperature=0.7,
                     response_mime_type="application/json",
                     response_schema=DigestOutput,
-                    temperature=0.7,
                 )
             )
             
-            return DigestOutput.model_validate_json(response.text)
+            return response.parsed
         except Exception as e:
             print(f"Error generating digest: {e}")
             return None

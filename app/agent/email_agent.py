@@ -1,7 +1,8 @@
 import os
 from datetime import datetime
 from typing import List, Optional
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 
@@ -64,8 +65,13 @@ Keep it concise (2-3 sentences for the introduction), friendly, and professional
 class EmailAgent:
     def __init__(self, user_profile: dict):
         api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or os.getenv("OPENAI_API_KEY")
-        genai.configure(api_key=api_key)
-        self.model = "gemini-1.5-flash"
+        if api_key == "":
+            api_key = None
+        try:
+            self.client = genai.Client(api_key=api_key) if api_key else genai.Client()
+        except ValueError:
+            self.client = None
+        self.model = "gemini-2.5-flash"
         self.user_profile = user_profile
 
     def generate_introduction(self, ranked_articles: List) -> EmailIntroduction:
@@ -89,22 +95,27 @@ Top 10 ranked articles:
 
 Generate a greeting and introduction that previews these articles."""
 
-        try:
-            model = genai.GenerativeModel(
-                model_name=self.model,
-                system_instruction=EMAIL_PROMPT
+        if not self.client:
+            print("Error generating email introduction: Google GenAI client is not initialized. Please set GEMINI_API_KEY in your environment.")
+            return EmailIntroduction(
+                greeting=f"Hey {self.user_profile['name']}, here is your daily digest of AI news for {current_date}.",
+                introduction="Here are the top 10 AI news articles ranked by relevance to your interests."
             )
-            response = model.generate_content(
-                user_prompt,
-                generation_config=genai.GenerationConfig(
+
+        try:
+            response = self.client.models.generate_content(
+                model=self.model,
+                contents=user_prompt,
+                config=types.GenerateContentConfig(
+                    system_instruction=EMAIL_PROMPT,
+                    temperature=0.7,
                     response_mime_type="application/json",
                     response_schema=EmailIntroduction,
-                    temperature=0.7,
                 )
             )
             
-            intro = EmailIntroduction.model_validate_json(response.text)
-            if not intro.greeting.startswith(f"Hey {self.user_profile['name']}"):
+            intro = response.parsed
+            if intro and not intro.greeting.startswith(f"Hey {self.user_profile['name']}"):
                 intro.greeting = f"Hey {self.user_profile['name']}, here is your daily digest of AI news for {current_date}."
             
             return intro
