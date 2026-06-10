@@ -1,12 +1,7 @@
-import os
 from datetime import datetime
 from typing import List, Optional
-from google import genai
-from google.genai import types
 from pydantic import BaseModel, Field
-from dotenv import load_dotenv
-
-load_dotenv()
+from .base import BaseAgent
 
 
 class EmailIntroduction(BaseModel):
@@ -62,16 +57,9 @@ Your role is to write a warm, professional introduction for a daily AI news dige
 Keep it concise (2-3 sentences for the introduction), friendly, and professional."""
 
 
-class EmailAgent:
+class EmailAgent(BaseAgent):
     def __init__(self, user_profile: dict):
-        api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or os.getenv("OPENAI_API_KEY")
-        if api_key == "":
-            api_key = None
-        try:
-            self.client = genai.Client(api_key=api_key) if api_key else genai.Client()
-        except ValueError:
-            self.client = None
-        self.model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+        super().__init__("gpt-4o-mini")
         self.user_profile = user_profile
 
     def generate_introduction(self, ranked_articles: List) -> EmailIntroduction:
@@ -95,54 +83,27 @@ Top 10 ranked articles:
 
 Generate a greeting and introduction that previews these articles."""
 
-        if not self.client:
-            print("Error generating email introduction: Google GenAI client is not initialized. Please set GEMINI_API_KEY in your environment.")
+        try:
+            response = self.client.responses.parse(
+                model=self.model,
+                instructions=EMAIL_PROMPT,
+                temperature=0.7,
+                input=user_prompt,
+                text_format=EmailIntroduction
+            )
+            
+            intro = response.output_parsed
+            if not intro.greeting.startswith(f"Hey {self.user_profile['name']}"):
+                intro.greeting = f"Hey {self.user_profile['name']}, here is your daily digest of AI news for {current_date}."
+            
+            return intro
+        except Exception as e:
+            print(f"Error generating introduction: {e}")
+            current_date = datetime.now().strftime('%B %d, %Y')
             return EmailIntroduction(
                 greeting=f"Hey {self.user_profile['name']}, here is your daily digest of AI news for {current_date}.",
                 introduction="Here are the top 10 AI news articles ranked by relevance to your interests."
             )
-
-        import time
-        for attempt in range(3):
-            try:
-                response = self.client.models.generate_content(
-                    model=self.model,
-                    contents=user_prompt,
-                    config=types.GenerateContentConfig(
-                        system_instruction=EMAIL_PROMPT,
-                        temperature=0.7,
-                        response_mime_type="application/json",
-                        response_schema=EmailIntroduction,
-                    )
-                )
-                
-                intro = response.parsed
-                if intro and not intro.greeting.startswith(f"Hey {self.user_profile['name']}"):
-                    intro.greeting = f"Hey {self.user_profile['name']}, here is your daily digest of AI news for {current_date}."
-                
-                return intro
-            except Exception as e:
-                err_str = str(e)
-                if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
-                    wait_time = 45 if attempt == 0 else 60
-                    print(f"Rate limit hit. Retrying in {wait_time}s... (Attempt {attempt + 1}/3)")
-                    time.sleep(wait_time)
-                elif "503" in err_str or "UNAVAILABLE" in err_str:
-                    wait_time = 10
-                    print(f"Service unavailable (503). Retrying in {wait_time}s... (Attempt {attempt + 1}/3)")
-                    time.sleep(wait_time)
-                else:
-                    print(f"Error generating introduction: {e}")
-                    current_date = datetime.now().strftime('%B %d, %Y')
-                    return EmailIntroduction(
-                        greeting=f"Hey {self.user_profile['name']}, here is your daily digest of AI news for {current_date}.",
-                        introduction="Here are the top 10 AI news articles ranked by relevance to your interests."
-                    )
-        current_date = datetime.now().strftime('%B %d, %Y')
-        return EmailIntroduction(
-            greeting=f"Hey {self.user_profile['name']}, here is your daily digest of AI news for {current_date}.",
-            introduction="Here are the top 10 AI news articles ranked by relevance to your interests."
-        )
 
     def create_email_digest(self, ranked_articles: List[dict], limit: int = 10) -> EmailDigest:
         top_articles = ranked_articles[:limit]

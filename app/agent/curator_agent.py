@@ -1,11 +1,6 @@
-import os
 from typing import List
-from google import genai
-from google.genai import types
 from pydantic import BaseModel, Field
-from dotenv import load_dotenv
-
-load_dotenv()
+from .base import BaseAgent
 
 
 class RankedArticle(BaseModel):
@@ -40,16 +35,9 @@ Scoring Guidelines:
 Rank articles from most relevant (rank 1) to least relevant. Ensure each article has a unique rank."""
 
 
-class CuratorAgent:
+class CuratorAgent(BaseAgent):
     def __init__(self, user_profile: dict):
-        api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or os.getenv("OPENAI_API_KEY")
-        if api_key == "":
-            api_key = None
-        try:
-            self.client = genai.Client(api_key=api_key) if api_key else genai.Client()
-        except ValueError:
-            self.client = None
-        self.model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+        super().__init__("gpt-4.1")
         self.user_profile = user_profile
         self.system_prompt = self._build_system_prompt()
 
@@ -86,36 +74,17 @@ Preferences:
 
 Provide a relevance score (0.0-10.0) and rank (1-{len(digests)}) for each article, ordered from most to least relevant."""
 
-        if not self.client:
-            print("Error ranking digests: Google GenAI client is not initialized. Please set GEMINI_API_KEY in your environment.")
+        try:
+            response = self.client.responses.parse(
+                model=self.model,
+                instructions=self.system_prompt,
+                temperature=0.3,
+                input=user_prompt,
+                text_format=RankedDigestList
+            )
+            
+            ranked_list = response.output_parsed
+            return ranked_list.articles if ranked_list else []
+        except Exception as e:
+            print(f"Error ranking digests: {e}")
             return []
-
-        import time
-        for attempt in range(3):
-            try:
-                response = self.client.models.generate_content(
-                    model=self.model,
-                    contents=user_prompt,
-                    config=types.GenerateContentConfig(
-                        system_instruction=self.system_prompt,
-                        temperature=0.3,
-                        response_mime_type="application/json",
-                        response_schema=RankedDigestList,
-                    )
-                )
-                ranked_list = response.parsed
-                return ranked_list.articles if ranked_list else []
-            except Exception as e:
-                err_str = str(e)
-                if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
-                    wait_time = 45 if attempt == 0 else 60
-                    print(f"Rate limit hit. Retrying in {wait_time}s... (Attempt {attempt + 1}/3)")
-                    time.sleep(wait_time)
-                elif "503" in err_str or "UNAVAILABLE" in err_str:
-                    wait_time = 10
-                    print(f"Service unavailable (503). Retrying in {wait_time}s... (Attempt {attempt + 1}/3)")
-                    time.sleep(wait_time)
-                else:
-                    print(f"Error ranking digests: {e}")
-                    return []
-        return []
